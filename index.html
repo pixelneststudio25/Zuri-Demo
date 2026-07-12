@@ -3,23 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!-- Open Graph / Facebook, LinkedIn, WhatsApp -->
-<meta property="og:type" content="website">
-<meta property="og:url" content="https://pixelneststudio25.github.io/Zuri-Demo/">
-<meta property="og:title" content="Zuri — Africa's businesses, finally online.">
-<meta property="og:description" content="Zuri gives every SME a storefront, a payment rail, and a place on the map — live in minutes, not months.">
-<meta property="og:image" content="https://pixelneststudio25.github.io/Zuri-Demo/zuri_meta.png">
-<meta property="og:image:width" content="1584">
-<meta property="og:image:height" content="792">
-<meta property="og:site_name" content="Zuri">
-
-<!-- Twitter / X -->
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:url" content="https://pixelneststudio25.github.io/Zuri-Demo/">
-<meta name="twitter:title" content="Zuri — Africa's businesses, finally online.">
-<meta name="twitter:description" content="Zuri gives every SME a storefront, a payment rail, and a place on the map — live in minutes, not months.">
-<meta name="twitter:image" content="https://pixelneststudio25.github.io/Zuri-Demo/zuri_meta.png">
-
 <title>Zuri — Africa's businesses, finally online.</title>
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
@@ -177,12 +160,25 @@
     z-index:50;
     background:rgba(10,10,10,0);
     border-bottom:1px solid rgba(255,255,255,0);
-    transition:background .4s ease, border-color .4s ease;
+    transition:background .4s ease, border-color .4s ease, opacity .4s ease, transform .4s ease;
   }
   .navbar.scrolled{
     background:rgba(10,10,10,0.92);
     backdrop-filter:blur(8px);
     border-bottom:1px solid #1e1e1e;
+  }
+  /* Mobile: navbar stays hidden until past the hero */
+  @media (max-width:900px){
+    .navbar{
+      opacity:0;
+      transform:translateY(-14px);
+      pointer-events:none;
+    }
+    .navbar.scrolled{
+      opacity:1;
+      transform:translateY(0);
+      pointer-events:auto;
+    }
   }
   .nav-inner{
     max-width:1300px;
@@ -772,11 +768,19 @@ const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)
 /* ---------------- Navbar scroll fade ---------------- */
 (function(){
   const nav = document.getElementById('navbar');
+  const hero = document.querySelector('.hero');
+  function threshold(){
+    if(window.innerWidth <= 900 && hero){
+      return hero.offsetHeight * 0.10; // reveal once mostly past the hero, mobile only
+    }
+    return 40; // desktop: fade to solid almost immediately
+  }
   function onScroll(){
-    if(window.scrollY > 40) nav.classList.add('scrolled');
+    if(window.scrollY > threshold()) nav.classList.add('scrolled');
     else nav.classList.remove('scrolled');
   }
   window.addEventListener('scroll', onScroll, {passive:true});
+  window.addEventListener('resize', onScroll);
   onScroll();
 })();
 
