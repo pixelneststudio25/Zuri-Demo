@@ -128,9 +128,12 @@ const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)
     function activate(){
       if(hovering) return;
       btn.classList.remove('auto-fading');
-      void btn.offsetWidth;
-      btn.classList.add('auto-active');
-      timer = setTimeout(()=>{ if(!hovering) fade(); }, HOLD_MS);
+      btn.classList.remove('auto-active');
+      requestAnimationFrame(()=>{
+        if(hovering) return;
+        btn.classList.add('auto-active');
+        timer = setTimeout(()=>{ if(!hovering) fade(); }, HOLD_MS);
+      });
     }
     function fade(){
       btn.classList.remove('auto-active');
@@ -249,27 +252,7 @@ const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)
   startAuto();
 })();
 
-/* ---------------- Micro-interactions (button magnetism, card tilt) ---------------- */
-if(!prefersReducedMotion){
-  document.querySelectorAll('.btn-gold').forEach(btn=>{
-    btn.addEventListener('mousemove', (e)=>{
-      const r = btn.getBoundingClientRect();
-      const x = e.clientX - r.left - r.width/2;
-      const y = e.clientY - r.top - r.height/2;
-      btn.style.transform = `translate(${x*0.15}px, ${y*0.25}px)`;
-    });
-    btn.addEventListener('mouseleave', ()=>{ btn.style.transform = 'translate(0,0)'; });
-  });
-  document.querySelectorAll('.feature-card').forEach(card=>{
-    card.addEventListener('mousemove', (e)=>{
-      const r = card.getBoundingClientRect();
-      const px = (e.clientX - r.left)/r.width - 0.5;
-      const py = (e.clientY - r.top)/r.height - 0.5;
-      card.style.transform = `perspective(600px) rotateY(${px*6}deg) rotateX(${-py*6}deg)`;
-    });
-    card.addEventListener('mouseleave', ()=>{ card.style.transform = 'perspective(600px) rotateY(0) rotateX(0)'; });
-  });
-}
+/* Magnetic / 3D tilt removed — pure CSS :hover only (INP). */
 
 /* ---------------- Pricing toggle — generic, data-attribute driven (shared logic, home-page instance) ---------------- */
 (function(){
@@ -302,8 +285,15 @@ revealEls.forEach(el=>io.observe(el));
 
 /* ---------------- Hero: sculptural chrome mark ---------------- */
 const canvas = document.getElementById('hero-canvas');
-const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
-renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+const dprCap = Math.min(window.devicePixelRatio || 1, 2);
+const useAntialias = dprCap <= 1.5;
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: useAntialias,
+  alpha: true,
+  powerPreference: 'high-performance',
+});
+renderer.setPixelRatio(dprCap);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 
@@ -313,7 +303,8 @@ camera.position.set(0, 0, 9);
 const IDLE_Z = 10.5;
 
 const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
+scene.environment = envRT.texture;
 
 const keyLight = new THREE.DirectionalLight(0xffffff, 1.9);
 keyLight.position.set(4, 5, 6);
@@ -354,12 +345,12 @@ function buildFrameGeometry(){
   return geo;
 }
 function buildChipGeometry(){
-  const chip = new THREE.Shape();
-  chip.moveTo(0, 0.62);
-  chip.lineTo(0.5, -0.32);
-  chip.lineTo(-0.5, -0.32);
-  chip.closePath();
-  const geo = new THREE.ExtrudeGeometry(chip, {
+  const chipShape = new THREE.Shape();
+  chipShape.moveTo(0, 0.62);
+  chipShape.lineTo(0.5, -0.32);
+  chipShape.lineTo(-0.5, -0.32);
+  chipShape.closePath();
+  const geo = new THREE.ExtrudeGeometry(chipShape, {
     depth: 0.3, bevelEnabled:true, bevelThickness:0.04, bevelSize:0.03, bevelSegments:3, curveSegments:2
   });
   geo.center();
@@ -367,6 +358,7 @@ function buildChipGeometry(){
 }
 
 const markGeo = buildFrameGeometry();
+const chipGeo = buildChipGeometry();
 const chromeMat = new THREE.MeshPhysicalMaterial({
   color: 0xc4cad2,
   metalness: 1,
@@ -386,7 +378,7 @@ const chipMat = new THREE.MeshPhysicalMaterial({
   clearcoatRoughness: 0.1,
   envMapIntensity: 0.8
 });
-const chip = new THREE.Mesh(buildChipGeometry(), chipMat);
+const chip = new THREE.Mesh(chipGeo, chipMat);
 chip.position.set(0.03, 0.05, -0.28);
 mark.add(chip);
 
@@ -402,7 +394,7 @@ canvas.addEventListener('mousemove', (e)=>{
   pointerNDC.x = ((e.clientX-r.left)/r.width)*2-1;
   pointerNDC.y = -(((e.clientY-r.top)/r.height)*2-1);
   pointerActive = true;
-});
+}, {passive:true});
 canvas.addEventListener('mouseleave', ()=>{ pointerActive=false; });
 
 let scrollT = 0;
@@ -420,24 +412,79 @@ function resize(){
   camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
+let resizeObs = null;
 if(typeof ResizeObserver !== 'undefined'){
-  new ResizeObserver(resize).observe(canvas);
+  resizeObs = new ResizeObserver(resize);
+  resizeObs.observe(canvas);
 }
 resize();
 
 const heroStart = performance.now();
 const REVEAL_MS = 1900;
+const FLOAT_AMP = 0.08;
+const SPIN_PER_FRAME = 0.0015;
 mark.scale.setScalar(0.001);
 mark.rotation.set(0.6, -2.4, 0.3);
 camera.position.z = 15;
 
 let mx = 0, my = 0;
+let spinY = 0;
+let rafId = 0;
+let loopRunning = false;
+let tabVisible = !document.hidden;
+let canvasVisible = true;
+
+window.__zuriHeroDebug = {
+  frames: 0,
+  rendering: false,
+  tabVisible: true,
+  canvasVisible: true,
+  pixelRatio: dprCap,
+  antialias: useAntialias,
+};
+
+function shouldRender(){
+  return tabVisible && canvasVisible && !prefersReducedMotion;
+}
+
+function startLoop(){
+  if(loopRunning || !shouldRender()) return;
+  loopRunning = true;
+  window.__zuriHeroDebug.rendering = true;
+  rafId = requestAnimationFrame(animate);
+}
+
+function stopLoop(){
+  loopRunning = false;
+  window.__zuriHeroDebug.rendering = false;
+  if(rafId){ cancelAnimationFrame(rafId); rafId = 0; }
+}
+
+function syncLoop(){
+  window.__zuriHeroDebug.tabVisible = tabVisible;
+  window.__zuriHeroDebug.canvasVisible = canvasVisible;
+  if(shouldRender()) startLoop();
+  else stopLoop();
+}
+
+document.addEventListener('visibilitychange', ()=>{
+  tabVisible = !document.hidden;
+  syncLoop();
+});
+
+const heroIO = new IntersectionObserver((entries)=>{
+  canvasVisible = entries.some(e => e.isIntersecting && e.intersectionRatio > 0);
+  syncLoop();
+}, {threshold: 0.01});
+heroIO.observe(canvas);
 
 function animate(){
-  requestAnimationFrame(animate);
+  if(!loopRunning) return;
+  rafId = requestAnimationFrame(animate);
+  window.__zuriHeroDebug.frames++;
+
   const now = performance.now();
   const elapsed = now - heroStart;
-  const t = now/1000;
 
   const tx = pointerActive ? pointerNDC.x : 0;
   const ty = pointerActive ? pointerNDC.y : 0;
@@ -450,11 +497,14 @@ function animate(){
     mark.rotation.y = THREE.MathUtils.lerp(-2.4, 0.5, ease);
     mark.rotation.x = THREE.MathUtils.lerp(0.6, 0.12, ease);
     mark.rotation.z = THREE.MathUtils.lerp(0.3, 0, ease);
+    mark.position.y = 0;
     camera.position.z = THREE.MathUtils.lerp(15, IDLE_Z, ease);
   } else {
     const idle = (elapsed-REVEAL_MS)/1000;
-    mark.rotation.y = 0.5 + Math.sin(idle*0.19)*0.22 + mx*0.35;
+    spinY += SPIN_PER_FRAME;
+    mark.rotation.y = 0.5 + Math.sin(idle*0.19)*0.22 + mx*0.35 + spinY;
     mark.rotation.x = 0.12 + Math.cos(idle*0.13)*0.08 - my*0.25;
+    mark.position.y = Math.sin(idle * 0.65) * FLOAT_AMP;
     camera.position.z = IDLE_Z - scrollT*1.5;
 
     const lightAngle = idle*0.11;
@@ -465,8 +515,32 @@ function animate(){
 
   camera.position.x = mx*0.6;
   camera.position.y = my*0.4;
-  camera.lookAt(0,0,0);
+  camera.lookAt(0, mark.position.y, 0);
 
   renderer.render(scene, camera);
 }
-animate();
+
+function disposeHero(){
+  stopLoop();
+  heroIO.disconnect();
+  if(resizeObs) resizeObs.disconnect();
+  markGeo.dispose();
+  chipGeo.dispose();
+  edgeGeo.dispose();
+  chromeMat.dispose();
+  chipMat.dispose();
+  edgeMat.dispose();
+  envRT.dispose();
+  pmrem.dispose();
+  renderer.dispose();
+}
+window.addEventListener('pagehide', disposeHero);
+
+if(prefersReducedMotion){
+  mark.scale.setScalar(1);
+  mark.rotation.set(0.12, 0.5, 0);
+  resize();
+  renderer.render(scene, camera);
+} else {
+  syncLoop();
+}
