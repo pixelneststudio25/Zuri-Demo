@@ -647,13 +647,21 @@
   const heroStart = performance.now();
   const REVEAL_MS = 1900;
   const FLOAT_AMP = 0.08; /* ~scene units — gentle vertical float */
-  const SPIN_PER_FRAME = 0.0015;
+  /* Y sway stays within a safe front-facing cone so the open back never shows.
+     Threshold check: hollow starts reading past ~25–30° from base; ±18° is safe. */
+  const BASE_ROT_Y = 0.48;                              /* ~27.5° — designed front */
+  const BASE_ROT_X = 0.12;
+  const SWAY_AMP_Y = THREE.MathUtils.degToRad(18);       /* ±18° autonomous */
+  const SWAY_AMP_X = THREE.MathUtils.degToRad(6);        /* subtle pitch */
+  const SWAY_SPEED_Y = 0.32;                             /* slow sway */
+  const SWAY_SPEED_X = 0.24;
+  const POINTER_Y_MAX = THREE.MathUtils.degToRad(5);     /* pointer stays inside safe cone */
+  const POINTER_X_MAX = THREE.MathUtils.degToRad(4);
   mark.scale.setScalar(0.001);
   mark.rotation.set(0.6, -2.4, 0.3);
   camera.position.z = 15;
 
   let mx = 0, my = 0;
-  let spinY = 0;
   let rafId = 0;
   let loopRunning = false;
   let tabVisible = !document.hidden;
@@ -719,16 +727,19 @@
       const p = elapsed/REVEAL_MS;
       const ease = 1 - Math.pow(1-p, 3);
       mark.scale.setScalar(THREE.MathUtils.lerp(0.001, 1, ease));
-      mark.rotation.y = THREE.MathUtils.lerp(-2.4, 0.5, ease);
-      mark.rotation.x = THREE.MathUtils.lerp(0.6, 0.12, ease);
+      mark.rotation.y = THREE.MathUtils.lerp(-2.4, BASE_ROT_Y, ease);
+      mark.rotation.x = THREE.MathUtils.lerp(0.6, BASE_ROT_X, ease);
       mark.rotation.z = THREE.MathUtils.lerp(0.3, 0, ease);
       mark.position.y = 0;
       camera.position.z = THREE.MathUtils.lerp(15, IDLE_Z, ease);
     } else {
       const idle = (elapsed-REVEAL_MS)/1000;
-      spinY += SPIN_PER_FRAME;
-      mark.rotation.y = 0.5 + Math.sin(idle*0.19)*0.22 + mx*0.35 + spinY;
-      mark.rotation.x = 0.12 + Math.cos(idle*0.13)*0.08 - my*0.25;
+      const swayY = Math.sin(idle * SWAY_SPEED_Y) * SWAY_AMP_Y;
+      const swayX = Math.cos(idle * SWAY_SPEED_X) * SWAY_AMP_X;
+      const ptrY = THREE.MathUtils.clamp(mx * 0.18, -POINTER_Y_MAX, POINTER_Y_MAX);
+      const ptrX = THREE.MathUtils.clamp(-my * 0.14, -POINTER_X_MAX, POINTER_X_MAX);
+      mark.rotation.y = BASE_ROT_Y + swayY + ptrY;
+      mark.rotation.x = BASE_ROT_X + swayX + ptrX;
       /* Gentle vertical float (sine) */
       mark.position.y = Math.sin(idle * 0.65) * FLOAT_AMP;
       camera.position.z = IDLE_Z - scrollT*1.5;
