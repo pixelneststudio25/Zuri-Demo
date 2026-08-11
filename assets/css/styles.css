@@ -66,6 +66,7 @@ main{
   isolation:isolate;
   contain:layout paint style;
   transform:translateZ(0);
+  white-space:nowrap;
 }
 .btn-gold::before{
   content:'';
@@ -113,6 +114,7 @@ main{
   isolation:isolate;
   transform:translateZ(0);
   transition:box-shadow .3s ease;
+  white-space:nowrap;
 }
 .btn-ghost::before{
   content:'';
@@ -269,8 +271,8 @@ main{
   display:grid;
   grid-template-columns:1.1fr 1fr;
   align-items:center;
-  padding:6.5rem 6vw 0;
-  gap:2vw;
+  padding:6.5rem clamp(2rem,6vw,5rem) 0;
+  gap:clamp(1.5rem,2vw,3rem);
   isolation:isolate;
 }
 /* Ambient behind the WebGL canvas — CSS only, not inside Three.js */
@@ -295,6 +297,7 @@ main{
   grid-column:2;
   position:relative;
   z-index:2;
+  min-width:0;
 }
 .hero-copy--reveal{
   opacity:0;
@@ -319,11 +322,11 @@ main{
   margin-bottom:1rem;
 }
 .hero-copy h1{
-  font-size:clamp(2.2rem,3.6vw,3.35rem);
+  font-size:clamp(2.5rem,1.7vw,3.1rem);
   line-height:1.05;
   color:var(--chrome-light);
   margin-bottom:1.2rem;
-  max-width:min(22ch, 34vw);
+  max-width:22ch;
   text-wrap:balance;
 }
 .hero-copy h1 em{
@@ -339,7 +342,27 @@ main{
   line-height:1.6;
   margin-bottom:2.2rem;
 }
-.cta-row{ display:flex; gap:1rem; flex-wrap:wrap; }
+.cta-row{
+  display:flex;
+  gap:1rem;
+  flex-wrap:nowrap;
+}
+.cta-row .btn-gold,
+.cta-row .btn-ghost{
+  flex-shrink:0;
+}
+
+/* Only allow the CTAs to stack once we're in the mobile/tablet nav breakpoint,
+   where hero copy also switches layout — keeps them side-by-side on every
+   desktop width instead of wrapping unpredictably based on window size. */
+@media (max-width:900px){
+  .cta-row{ flex-wrap:wrap; }
+  .cta-row .btn-gold,
+  .cta-row .btn-ghost{
+    white-space:normal;
+    flex-shrink:1;
+  }
+}
 
 /* ---------- PAGE HEADER (inner pages — About, Pricing, Terms, etc.) ---------- */
 .page-header{
